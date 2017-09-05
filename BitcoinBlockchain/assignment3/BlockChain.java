@@ -7,7 +7,7 @@ import java.nio.ByteBuffer;
 
 public class BlockChain {
     public static final int  CUT_OFF_AGE = 10;
-    
+    int damn;
 
     private class QueuePair{
         ByteBuffer prevBlockHash;
