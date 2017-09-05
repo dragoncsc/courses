@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 
 public class BlockChain {
     public static final int  CUT_OFF_AGE = 10;
-    int damn;
 
     private class QueuePair{
         ByteBuffer prevBlockHash;
@@ -20,13 +19,22 @@ public class BlockChain {
     }
     private class IntPair{
         int age;
+        UTXOPool top;
         int height;
+
+        private IntPair(int age, int height, UTXOPool pool){
+            this.age = age;
+            this.top = pool;
+            this.height = height;
+        }
 
         private IntPair(int age, int height){
             this.age = age;
-
-            
+            this.top = new UTXOPool();
             this.height = height;
+        }
+        private UTXOPool getPool(){
+            return top;
         }
     }
     // for knowing which node is the oldest/which to remove next
@@ -38,6 +46,7 @@ public class BlockChain {
        we allow forking in the tree 
     */
     HashMap<ByteBuffer, IntPair> edgeBlocks;
+    TransactionPool cur;
     // centralized time
     int nodeAge = 0;
     // current front most node
@@ -60,6 +69,7 @@ public class BlockChain {
         this.chainAge = new LinkedList<QueuePair>();
         this.edgeBlocks = new HashMap<ByteBuffer, IntPair>();
         this.nodeAge+=1;
+        this.cur = new TransactionPool();
         ByteBuffer hash = ByteBuffer.wrap(genesisBlock.getPrevBlockHash());
         QueuePair key = new QueuePair( hash, this.nodeAge);
         this.highestNode = hash;
@@ -76,11 +86,7 @@ public class BlockChain {
 
     /** Get the UTXOPool for mining a new block on top of max height block */
     public UTXOPool getMaxHeightUTXOPool() {
-        // create new TxHandler class here
-        // pass in transactions from this.highestNode
-        // call new transactionPool fxn in TxHandler
-        // return
-        TxHandler ye = new 
+        this.edgeBlocks.get(this.highestNode).getPool();
     }
 
     /** Get the transaction pool to mine a new block */
@@ -106,6 +112,6 @@ public class BlockChain {
 
     /** Add a transaction to the transaction pool */
     public void addTransaction(Transaction tx) {
-        // IMPLEMENT THIS
+        this.cur.addTransaction(tx);
     }
 }
