@@ -66,8 +66,23 @@ public class BlockChain {
         BlockClass gen = new BlockClass(genesisBlock, 1, hash);
         this.curChain.put(hash, gen);
         UTXOPool newPool = new UTXOPool();
+        newPool = this.addGenUTXO( newPool, genesisBlock );
         this.highestNode = gen;
         this.edgeBlocks.put(hash, newPool);
+    }
+
+    private UTXOPool addGenUTXO(UTXOPool newPool, Block genBlock){
+        Transaction tmp = genBlock.getCoinbase();
+        ArrayList<Transaction> txs = genBlock.getTransactions();
+        txs.add(tmp);
+        for ( Transaction tx : genBlock.getTransactions() ){
+            int index = 0;
+            for (Transaction.Output opt : tx.getOutputs() ){
+                newPool.addUTXO( new UTXO( tx.getHash(), index ), opt );
+                index += 1;
+            }
+        }
+        return newPool;
     }
 
     /** Get the maximum height block */
@@ -113,7 +128,7 @@ public class BlockChain {
         - add block to curChain
         */
         this.nodeAge += 1;
-        this.removeOldBlocks();
+        //this.removeOldBlocks();
         this.checkTx(block);
         // can't have new genesis block
         if (block.getPrevBlockHash() == null)
@@ -131,6 +146,7 @@ public class BlockChain {
         Transaction[] validTrans = newHandler.handleTxs( block.getTransactions().
             toArray( new Transaction[block.getTransactions().size()] ) );
         UTXOPool newPool = newHandler.getUTXOPool();
+        newPool.addUTXO( new UTXO(block.getCoinbase().getHash(), 0), block.getCoinbase().getOutput(0) );
         //this.edgeBlocks.put(parentHash, newPool);
         this.edgeBlocks.put(curHash, newPool);
         BlockClass tmp = new BlockClass( block, this.curChain.get(parentHash).height+1, curHash );
@@ -162,6 +178,7 @@ public class BlockChain {
     // remove from queue, block chain and edgeBlocks
     private void removeOldBlocks(){
         QueuePair curOldest = this.chainAge.peek();
+        if (curOldest == null) return;
         while (curOldest.curCnt < this.nodeAge - this.CUT_OFF_AGE  ){
             this.curChain.remove(curOldest.blockHash);
             this.edgeBlocks.remove(curOldest.blockHash);
