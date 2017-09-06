@@ -9,89 +9,83 @@ public class BlockChain {
     public static final int  CUT_OFF_AGE = 10;
 
     private class QueuePair{
-        ByteBuffer prevBlockHash;
+        ByteBuffer blockHash;
         Integer curCnt;
 
-        private QueuePair(ByteBuffer prevBlockHash, Integer curCnt){
-            this.prevBlockHash = prevBlockHash;
+        private QueuePair(ByteBuffer blockHash, Integer curCnt){
+            this.blockHash = blockHash;
             this.curCnt = curCnt;
         }
     }
-    private class IntPair{
-        int age;
-        UTXOPool top;
-        int height;
 
-        private IntPair(int age, int height, UTXOPool pool){
-            this.age = age;
-            this.top = pool;
-            this.height = height;
-        }
+    private class BlockClass{
+        Block block;
+        Integer height;
+        ByteBuffer hash;
 
-        private IntPair(int age, int height){
-            this.age = age;
-            this.top = new UTXOPool();
-            this.height = height;
-        }
-        private UTXOPool getPool(){
-            return top;
+        private BlockClass(Block blockHash, Integer curCnt, ByteBuffer hash){
+            this.block = blockHash;
+            this.height = curCnt;
+            this.hash = hash;
         }
     }
     // for knowing which node is the oldest/which to remove next
     Queue<QueuePair> chainAge;
     // the actual blockchain
-    HashMap<ByteBuffer, Block> curChain;
+    HashMap<ByteBuffer, BlockClass> curChain;
     /* for knowing which nodes on the chain are the front most node(s)
        using a map because there may be more than one front node since
        we allow forking in the tree 
     */
-    HashMap<ByteBuffer, IntPair> edgeBlocks;
-    TransactionPool cur;
+    HashMap<ByteBuffer, UTXOPool> edgeBlocks;
+    TransactionPool tPool;
     // centralized time
     int nodeAge = 0;
     // current front most node
-    ByteBuffer highestNode;
+    BlockClass highestNode;
     /**
      * create an empty block chain with just a genesis block. Assume {@code genesisBlock} is a valid
      * block
      *
-     * Queue to keep track of age of each hash, Hashmap to store the actual nodes
+     * @chainAge Queue to keep track of age of each hash, Hashmap to store the actual nodes
      * Using ByteBuffer to not have to deal with strage hashing issues of byte[]
-     * to keep track of the top of the chain/tree, should maintain a set of
-     * blocks that are on the 'top' of the stack. This way we won't have to 
-     * traverse all the way down each branch to get largest branch
-     * this set of blocks should be represented by a a map from hash to 
-     * <int, int> pairs, where (1) is the age and (2) is the height
-     * this makes for easy incrementing
+     * to keep track of the top of the chain/tree
+     * @edgeBlocks Should maintain a map of block hashes to UTXOPools
+     * @curChain inmem storage of blockchain
      */
     public BlockChain(Block genesisBlock) {
-        this.curChain = new HashMap<ByteBuffer, Block>();
+        this.curChain = new HashMap<ByteBuffer, BlockClass>();
         this.chainAge = new LinkedList<QueuePair>();
-        this.edgeBlocks = new HashMap<ByteBuffer, IntPair>();
+        this.edgeBlocks = new HashMap<ByteBuffer, UTXOPool>();
         this.nodeAge+=1;
-        this.cur = new TransactionPool();
-        ByteBuffer hash = ByteBuffer.wrap(genesisBlock.getPrevBlockHash());
+        this.tPool = new TransactionPool();
+        ByteBuffer hash = ByteBuffer.wrap(genesisBlock.getHash());
         QueuePair key = new QueuePair( hash, this.nodeAge);
-        this.highestNode = hash;
         this.chainAge.add(key);
-        this.curChain.put(hash, genesisBlock);
-        IntPair firstPair = new IntPair(this.nodeAge, 1);
-        this.edgeBlocks.put(hash, firstPair);
+        // store block/height
+        BlockClass gen = new BlockClass(genesisBlock, 1, hash);
+        this.curChain.put(hash, gen);
+        UTXOPool newPool = new UTXOPool();
+        this.highestNode = gen;
+        this.edgeBlocks.put(hash, newPool);
     }
 
     /** Get the maximum height block */
     public Block getMaxHeightBlock() {
-        return this.curChain.get(this.highestNode);
+        return this.highestNode.block;
     }
 
     /** Get the UTXOPool for mining a new block on top of max height block */
     public UTXOPool getMaxHeightUTXOPool() {
-        this.edgeBlocks.get(this.highestNode).getPool();
+        // THE WAY THIS IS IMPLEMENTED ensures that the oldest block is always returned if
+        // two blocks are at the same max height. this is becuase this.highestNode will only
+        // change if a new node is strictly higher than the cur highest node
+        return this.edgeBlocks.get(this.highestNode.hash);
     }
 
     /** Get the transaction pool to mine a new block */
     public TransactionPool getTransactionPool() {
-        // IMPLEMENT THIS
+        return this.tPool;
     }
 
     /**
@@ -107,11 +101,62 @@ public class BlockChain {
      * @return true if block is successfully added
      */
     public boolean addBlock(Block block) {
-        // IMPLEMENT THIS
+        /*
+        - need to increment age
+        - need to check if another genesis block
+        - need to check if parent is still in the hash table
+        - need to check validity
+        - need to grab prev UTXOPool
+        - check if the highest, and if so update
+        - add block to edgeNodes
+        - add block to chainAge
+        - add block to curChain
+        */
+        this.nodeAge += 1;
+        this.removeOldBlocks();
+        // can't have new genesis block
+        if (block.getPrevBlockHash() == null)
+            return false;
+        ByteBuffer parentHash = ByteBuffer.wrap(block.getPrevBlockHash());
+        // parent doesn't exist anymore
+        if (!this.curChain.containsKey(parentHash))
+            return false;
+        UTXOPool prevPool = this.edgeBlocks.get(parentHash);
+        TxHandler newHandler = new TxHandler(prevPool);
+        // get all new transactions, convert to array, pass into UTXOPool handler
+        // then check to make sure output Tx array is of same size as input Tx
+        // array. if not reject bc all transactions have to be valid
+        ByteBuffer curHash = ByteBuffer.wrap(block.getHash());
+        UTXOPool newPool = newHandler.getUTXOPool();
+        this.edgeBlocks.put(curHash, newPool);
+        BlockClass tmp = new BlockClass( block, this.curChain.get(parentHash).height+1, curHash );
+        this.checkHeights(tmp);
+        this.curChain.put(curHash, tmp);
+        QueuePair key = new QueuePair( curHash, this.nodeAge);
+        this.chainAge.add(key);
+        return true;
     }
 
+    private void checkHeights(BlockClass cur){
+        if(this.highestNode.height < cur.height)
+            this.highestNode = cur;
+        return;
+    }
+
+    // remove any block older than current epoch - max_age
+    // remove from queue, block chain and edgeBlocks
+    private void removeOldBlocks(){
+        QueuePair curOldest = this.chainAge.peek();
+        while (curOldest.curCnt < this.nodeAge - CUT_OFF_AGE  ){
+            this.curChain.remove(curOldest.blockHash);
+            this.edgeBlocks.remove(curOldest.blockHash);
+            this.chainAge.remove();
+            curOldest = this.chainAge.peek();
+        }
+        return;
+    }
     /** Add a transaction to the transaction pool */
     public void addTransaction(Transaction tx) {
-        this.cur.addTransaction(tx);
+        this.tPool.addTransaction(tx);
     }
 }
