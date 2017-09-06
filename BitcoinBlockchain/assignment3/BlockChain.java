@@ -114,6 +114,7 @@ public class BlockChain {
         */
         this.nodeAge += 1;
         this.removeOldBlocks();
+        this.checkTx(block);
         // can't have new genesis block
         if (block.getPrevBlockHash() == null)
             return false;
@@ -127,14 +128,28 @@ public class BlockChain {
         // then check to make sure output Tx array is of same size as input Tx
         // array. if not reject bc all transactions have to be valid
         ByteBuffer curHash = ByteBuffer.wrap(block.getHash());
+        Transaction[] validTrans = newHandler.handleTxs( block.getTransactions().
+            toArray( new Transaction[block.getTransactions().size()] ) );
         UTXOPool newPool = newHandler.getUTXOPool();
+        //this.edgeBlocks.put(parentHash, newPool);
         this.edgeBlocks.put(curHash, newPool);
         BlockClass tmp = new BlockClass( block, this.curChain.get(parentHash).height+1, curHash );
         this.checkHeights(tmp);
         this.curChain.put(curHash, tmp);
         QueuePair key = new QueuePair( curHash, this.nodeAge);
         this.chainAge.add(key);
+        this.filterTransactions(validTrans);
         return true;
+    }
+
+    private void checkTx(Block block){
+
+    }
+
+    private void filterTransactions(Transaction[] validTrans){
+        for (int i = 0; i < validTrans.length; i++)
+            this.tPool.removeTransaction( validTrans[i].getHash() );
+        
     }
 
     private void checkHeights(BlockClass cur){
@@ -147,7 +162,7 @@ public class BlockChain {
     // remove from queue, block chain and edgeBlocks
     private void removeOldBlocks(){
         QueuePair curOldest = this.chainAge.peek();
-        while (curOldest.curCnt < this.nodeAge - CUT_OFF_AGE  ){
+        while (curOldest.curCnt < this.nodeAge - this.CUT_OFF_AGE  ){
             this.curChain.remove(curOldest.blockHash);
             this.edgeBlocks.remove(curOldest.blockHash);
             this.chainAge.remove();

@@ -12,7 +12,9 @@ public class TxHandler {
         this.pLedger = new UTXOPool(utxoPool);
     }
 
-
+    public UTXOPool getUTXOPool(){
+        return this.pLedger;
+    }
     /**
      * @return true if:
      * (1) all outputs claimed by {@code tx} are in the current UTXO pool, 
